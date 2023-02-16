@@ -11,6 +11,8 @@
         WindowStyle="None"
         AllowsTransparency="True"
         MouseDown="Window_MouseDown"
+        PreviewMouseUp="Window_PreviewMouseUp"
+        
         >
     <VisualStateManager.VisualStateGroups>
         <VisualStateGroup x:Name="state">

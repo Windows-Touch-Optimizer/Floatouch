@@ -38,17 +38,21 @@ namespace floatouch
 
         public enum VisualStateType
         {
-            [Description("Normal")]
+            [Description("Normal_")]
             Normal,
             [Description("FloatButtonMouseDown")]
             FloatButtonMouseDown,
             [Description("FloatButtonMouseUp")]
             FloatButtonMouseUp,
+            [Description("FloatButtonTouchUp")]
+            FloatButtonTouchUp,
             [Description("EdgeButtonMouseDown_")]
             EdgeButtonMouseDown,
+            [Description("EdgeButtonTouchUp_")]
+            EdgeButtonTouchUp,
         }
 
-        float buttonClickZoom = -10;
+        float buttonClickZoom = -20;
 
         float floatButtonLeft = 200;
         float floatButtonTop = 150;
@@ -64,7 +68,9 @@ namespace floatouch
         float edgeButtonCount = 5;
         Button[] edgeButtons;
 
-        Duration defaultDuration = TimeSpan.FromMilliseconds(200);
+        int defaultDuration = 200;
+
+        int halfDuration = 100;
 
         VisualStateType visualState = VisualStateType.Normal;
         int idx = -1;
@@ -83,11 +89,11 @@ namespace floatouch
             }
         }
 
-        DoubleAnimation CreateDoubleAnimation(DependencyObject target, String path, double to, Duration? duration = null)
+        DoubleAnimation CreateDoubleAnimation(DependencyObject target, String path, double to,int beginTime =0, int duration = 200)
         {
-            if (duration == null) duration = defaultDuration;
             var animation = new DoubleAnimation();
-            animation.Duration = defaultDuration;
+            animation.Duration = TimeSpan.FromMilliseconds(duration);
+            animation.BeginTime= TimeSpan.FromMilliseconds(beginTime);
             animation.To = to;
             Storyboard.SetTarget(animation, target);
             Storyboard.SetTargetProperty(animation, new PropertyPath(path));
@@ -105,12 +111,21 @@ namespace floatouch
 
             switch (t)
             {
+                case VisualStateType.FloatButtonTouchUp:
+                    storyBoard.Children.Add(CreateDoubleAnimation(floatButton, "Width", floatButtonWidth + buttonClickZoom, 0, halfDuration));
+                    storyBoard.Children.Add(CreateDoubleAnimation(floatButton, "Height", floatButtonHeight + buttonClickZoom, 0, halfDuration));
+                    storyBoard.Children.Add(CreateDoubleAnimation(floatButton, "(Canvas.Left)", floatButtonLeft - buttonClickZoom / 2, 0, halfDuration));
+                    storyBoard.Children.Add(CreateDoubleAnimation(floatButton, "(Canvas.Top)", floatButtonTop - buttonClickZoom / 2, 0, halfDuration));
+                    storyBoard.Children.Add(CreateDoubleAnimation(floatButton, "Width", floatButtonWidth, halfDuration, halfDuration));
+                    storyBoard.Children.Add(CreateDoubleAnimation(floatButton, "Height", floatButtonHeight, halfDuration, halfDuration));
+                    storyBoard.Children.Add(CreateDoubleAnimation(floatButton, "(Canvas.Left)", floatButtonLeft, halfDuration, halfDuration));
+                    storyBoard.Children.Add(CreateDoubleAnimation(floatButton, "(Canvas.Top)", floatButtonTop, halfDuration, halfDuration));
+                    break;
                 case VisualStateType.FloatButtonMouseDown:
                     storyBoard.Children.Add(CreateDoubleAnimation(floatButton, "Width", floatButtonWidth + buttonClickZoom));
                     storyBoard.Children.Add(CreateDoubleAnimation(floatButton, "Height", floatButtonHeight + buttonClickZoom));
                     storyBoard.Children.Add(CreateDoubleAnimation(floatButton, "(Canvas.Left)", floatButtonLeft - buttonClickZoom / 2));
                     storyBoard.Children.Add(CreateDoubleAnimation(floatButton, "(Canvas.Top)", floatButtonTop - buttonClickZoom / 2));
-
                     break;
                 default:
                     storyBoard.Children.Add(CreateDoubleAnimation(floatButton, "Width", floatButtonWidth));
@@ -128,20 +143,29 @@ namespace floatouch
                 double radius = 0;
                 double width = 0;
                 double height = 0;
-
+                int duration = halfDuration;
+                int beginTime = 0;
                 switch (t)
                 {
                     case VisualStateType.Normal:
                         radius = 0;
                         width = edgeButtonWidth + edgeButtonBeginZoom;
                         height = edgeButtonHeight + edgeButtonBeginZoom;
+                        if (i == idx)
+                        {
+                            duration = 100;
+                            beginTime = 200;
+
+                            storyBoard.Children.Add(CreateDoubleAnimation(edgeButtons[i], "Width", edgeButtonWidth + buttonClickZoom, 0, 200));
+                            storyBoard.Children.Add(CreateDoubleAnimation(edgeButtons[i], "Height", edgeButtonHeight + buttonClickZoom, 0, 200));
+                        }
                         break;
                     case VisualStateType.EdgeButtonMouseDown:
                         if (i == idx)
                         {
                             width = edgeButtonWidth + buttonClickZoom;
                             height = edgeButtonHeight + buttonClickZoom;
-                            radius = edgeRadius - (buttonClickZoom / 2);
+                            radius = edgeRadius;
                         }
                         else
                         {
@@ -158,11 +182,11 @@ namespace floatouch
                 }
                 double left = centerLeft - radius * sin - width / 2;
                 double top = centerTop - radius * cos - height / 2;
-
-                storyBoard.Children.Add(CreateDoubleAnimation(edgeButtons[i], "Width", width));
-                storyBoard.Children.Add(CreateDoubleAnimation(edgeButtons[i], "Height", height));
-                storyBoard.Children.Add(CreateDoubleAnimation(edgeButtons[i], "(Canvas.Left)", left));
-                storyBoard.Children.Add(CreateDoubleAnimation(edgeButtons[i], "(Canvas.Top)", top));
+                
+                storyBoard.Children.Add(CreateDoubleAnimation(edgeButtons[i], "Width", width, beginTime, duration));
+                storyBoard.Children.Add(CreateDoubleAnimation(edgeButtons[i], "Height", height, beginTime, duration));
+                storyBoard.Children.Add(CreateDoubleAnimation(edgeButtons[i], "(Canvas.Left)", left, beginTime, duration));
+                storyBoard.Children.Add(CreateDoubleAnimation(edgeButtons[i], "(Canvas.Top)", top, beginTime, duration));
             }
 
             visualState.Storyboard = storyBoard;
@@ -180,7 +204,10 @@ namespace floatouch
 
         public MainWindow()
         {
+
             InitializeComponent();
+
+            this.Topmost = true;
 
             edgeButtons = new Button[] { edgeButton1, edgeButton2, edgeButton3, edgeButton4, edgeButton5 };
             var state = VisualStateManager.GetVisualStateGroups(this);
@@ -188,23 +215,25 @@ namespace floatouch
 
             x.States.Add(CreateVisualState(VisualStateType.FloatButtonMouseDown));
             x.States.Add(CreateVisualState(VisualStateType.FloatButtonMouseUp));
+            x.States.Add(CreateVisualState(VisualStateType.FloatButtonTouchUp));
             x.States.Add(CreateVisualState(VisualStateType.Normal));
 
             for (int i = 0; i < edgeButtonCount; i++)
             {
                 int _idx = i;
                 x.States.Add(CreateVisualState(VisualStateType.EdgeButtonMouseDown, i));
+                x.States.Add(CreateVisualState(VisualStateType.Normal, i));
                 edgeButtons[i].PreviewMouseDown += (object sender, MouseButtonEventArgs e) =>
                 {
                     SetVisualState(VisualStateType.EdgeButtonMouseDown, _idx);
                 };
                 edgeButtons[i].PreviewMouseUp += (object sender, MouseButtonEventArgs e) =>
                 {
-                    SetVisualState(VisualStateType.Normal);
+                    SetVisualState(VisualStateType.Normal, _idx);
                 };
             }
 
-            VisualStateManager.GoToElementState(this, "Normal", true);
+            SetVisualState(VisualStateType.Normal);
 
             //VisualStateManager.GetVisualStateGroups(this).Add(CreateVisualState(VisualStateType.Normal));
 
@@ -212,7 +241,13 @@ namespace floatouch
 
         private void floatButton_PreviewTouchDown(object sender, TouchEventArgs e)
         {
+            //toNormalAfterClick = false;
+            //if (visualState != VisualStateType.Normal)
+            //{
+            //    toNormalAfterClick = true;
+            //}
 
+            //SetVisualState(VisualStateType.FloatButtonMouseDown);
         }
 
         private void floatButton_PreviewTouchUp(object sender, TouchEventArgs e)
@@ -221,6 +256,10 @@ namespace floatouch
 
         private void floatButton_PreviewMouseDown(object sender, MouseButtonEventArgs e)
         {
+            if(e.ChangedButton!= MouseButton.Left)
+            {
+                return;
+            }
             toNormalAfterClick = false;
             if (visualState != VisualStateType.Normal)
             {
@@ -232,24 +271,78 @@ namespace floatouch
         }
 
         bool toNormalAfterClick = false;
+        private double getDistance(Button btn, MouseButtonEventArgs e)
+        {
+            Point point= e.GetPosition(btn);
+            double x = point.X- btn.Width/2;
+            double y = point.Y- btn.Height/2;
+            return x * x + y * y;
+        } 
         private void floatButton_PreviewMouseUp(object sender, MouseButtonEventArgs e)
         {
-            if (toNormalAfterClick)
+            if (e.ChangedButton != MouseButton.Left)
             {
-                SetVisualState(VisualStateType.Normal);
+                return;
+            }
+            Point p = e.GetPosition(edgeButton5);
+            double x = p.X;
+            double y = p.Y;
 
+            if (e.StylusDevice== null)
+            {
+                if (toNormalAfterClick)
+                {
+                    SetVisualState(VisualStateType.Normal);
+                }
+                else
+                {
+                    SetVisualState(VisualStateType.FloatButtonMouseUp);
+                }
             }
             else
             {
-                SetVisualState(VisualStateType.FloatButtonMouseUp);
+                if (toNormalAfterClick)
+                {
+                    SetVisualState(VisualStateType.Normal);
+                }
+                else
+                {
+                    double minDist = 1e9;
+                    int minIdx = -1;
+                    for(int i = 0; i < edgeButtonCount; i++)
+                    {
+                        var d = getDistance(edgeButtons[i], e);
+                        if (d < minDist)
+                        {
+                            minDist = d;
+                            minIdx = i;
+                        }
+                    }
+                    if(minDist<getDistance(floatButton, e))
+                    {
+                        SetVisualState(VisualStateType.Normal, minIdx);
+                    }
+                    else
+                    {
+                        SetVisualState(VisualStateType.FloatButtonTouchUp);
+                    }
+
+                }
 
             }
+
 
         }
 
         private void Window_MouseDown(object sender, MouseButtonEventArgs e)
         {
             // this.DragMove();
+            // 
+        }
+
+        private void Window_PreviewMouseUp(object sender, MouseButtonEventArgs e)
+        {
+
         }
     }
 }
