@@ -12,7 +12,7 @@
         AllowsTransparency="True"
         MouseDown="Window_MouseDown"
         PreviewMouseUp="Window_PreviewMouseUp"
-        
+        TouchMove="Window_TouchMove"
         >
     <VisualStateManager.VisualStateGroups>
         <VisualStateGroup x:Name="state">

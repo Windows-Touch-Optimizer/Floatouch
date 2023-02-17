@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
@@ -9,11 +11,13 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+
 
 namespace floatouch
 {
@@ -29,7 +33,115 @@ namespace floatouch
             return attributes.Length > 0 ? attributes[0].Description : string.Empty;
         }
     }
+    static class Keyboard
+    {
+        public static void SimulateKeyStroke(char? key, bool ctrl = false, bool alt = false, bool shift = false, bool win = false, bool tab = false)
+        {
+            List<ushort> keys = new List<ushort>();
 
+            if (ctrl)
+                keys.Add(VK_CONTROL);
+
+            if (alt)
+                keys.Add(VK_MENU);
+
+            if (shift)
+                keys.Add(VK_SHIFT);
+
+            if (win)
+                keys.Add(VK_LWIN);
+
+            if (tab)
+                keys.Add(VK_TAB);
+
+            if (key != null)
+            {
+                keys.Add((key.Value));
+            }
+
+            INPUT input = new INPUT();
+            input.type = INPUT_KEYBOARD;
+            int inputSize = Marshal.SizeOf(input);
+
+            for (int i = 0; i < keys.Count; ++i)
+            {
+                input.mkhi.ki.wVk = keys[i];
+
+                bool isKeyDown = (GetAsyncKeyState(keys[i]) & 0x10000) != 0;
+
+                if (!isKeyDown)
+                    SendInput(1, ref input, inputSize);
+            }
+
+            input.mkhi.ki.dwFlags = KEYEVENTF_KEYUP;
+            for (int i = keys.Count - 1; i >= 0; --i)
+            {
+                input.mkhi.ki.wVk = keys[i];
+                SendInput(1, ref input, inputSize);
+            }
+        }
+
+        [DllImport("user32.dll")]
+        static extern uint SendInput(uint nInputs, ref INPUT pInputs, int cbSize);
+
+        [DllImport("user32.dll")]
+        static extern short GetAsyncKeyState(ushort vKey);
+
+        struct MOUSEINPUT
+        {
+            public int dx;
+            public int dy;
+            public uint mouseData;
+            public uint dwFlags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        struct KEYBDINPUT
+        {
+            public ushort wVk;
+            public ushort wScan;
+            public uint dwFlags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        struct HARDWAREINPUT
+        {
+            public int uMsg;
+            public short wParamL;
+            public short wParamH;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        struct MOUSEKEYBDHARDWAREINPUT
+        {
+            [FieldOffset(0)]
+            public MOUSEINPUT mi;
+
+            [FieldOffset(0)]
+            public KEYBDINPUT ki;
+
+            [FieldOffset(0)]
+            public HARDWAREINPUT hi;
+        }
+
+        struct INPUT
+        {
+            public int type;
+            public MOUSEKEYBDHARDWAREINPUT mkhi;
+        }
+
+        const int INPUT_KEYBOARD = 1;
+        const uint KEYEVENTF_KEYUP = 0x0002;
+
+        const ushort VK_SHIFT = 0x10;
+        const ushort VK_CONTROL = 0x11;
+        const ushort VK_MENU = 0x12;
+        const ushort VK_LWIN = 0x5B;
+        const ushort VK_TAB = 0x09;
+        public const char VK_LEFT = (char)0x25;
+    }
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
@@ -89,11 +201,11 @@ namespace floatouch
             }
         }
 
-        DoubleAnimation CreateDoubleAnimation(DependencyObject target, String path, double to,int beginTime =0, int duration = 200)
+        DoubleAnimation CreateDoubleAnimation(DependencyObject target, String path, double to, int beginTime = 0, int duration = 200)
         {
             var animation = new DoubleAnimation();
             animation.Duration = TimeSpan.FromMilliseconds(duration);
-            animation.BeginTime= TimeSpan.FromMilliseconds(beginTime);
+            animation.BeginTime = TimeSpan.FromMilliseconds(beginTime);
             animation.To = to;
             Storyboard.SetTarget(animation, target);
             Storyboard.SetTargetProperty(animation, new PropertyPath(path));
@@ -182,7 +294,7 @@ namespace floatouch
                 }
                 double left = centerLeft - radius * sin - width / 2;
                 double top = centerTop - radius * cos - height / 2;
-                
+
                 storyBoard.Children.Add(CreateDoubleAnimation(edgeButtons[i], "Width", width, beginTime, duration));
                 storyBoard.Children.Add(CreateDoubleAnimation(edgeButtons[i], "Height", height, beginTime, duration));
                 storyBoard.Children.Add(CreateDoubleAnimation(edgeButtons[i], "(Canvas.Left)", left, beginTime, duration));
@@ -201,7 +313,22 @@ namespace floatouch
 
             return visualState;
         }
+        private const int WS_EX_NOACTIVATE = 0x08000000;
+        private const int GWL_EXSTYLE = -20;
 
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern int GetWindowLong(IntPtr hwnd, int index);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern int SetWindowLong(IntPtr hwnd, int index, int newStyle);
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            var hWnd = new WindowInteropHelper(this).Handle;
+            int style = GetWindowLong(hWnd, GWL_EXSTYLE);
+            SetWindowLong(hWnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE);
+
+            base.OnSourceInitialized(e);
+        }
         public MainWindow()
         {
 
@@ -229,6 +356,7 @@ namespace floatouch
                 };
                 edgeButtons[i].PreviewMouseUp += (object sender, MouseButtonEventArgs e) =>
                 {
+                    edgeButtonEventHandler(_idx);
                     SetVisualState(VisualStateType.Normal, _idx);
                 };
             }
@@ -256,7 +384,11 @@ namespace floatouch
 
         private void floatButton_PreviewMouseDown(object sender, MouseButtonEventArgs e)
         {
-            if(e.ChangedButton!= MouseButton.Left)
+            var hWnd = new WindowInteropHelper(this).Handle;
+            int style = GetWindowLong(hWnd, GWL_EXSTYLE);
+            SetWindowLong(hWnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE);
+
+            if (e.ChangedButton != MouseButton.Left)
             {
                 return;
             }
@@ -273,11 +405,12 @@ namespace floatouch
         bool toNormalAfterClick = false;
         private double getDistance(Button btn, MouseButtonEventArgs e)
         {
-            Point point= e.GetPosition(btn);
-            double x = point.X- btn.Width/2;
-            double y = point.Y- btn.Height/2;
+            Point point = e.GetPosition(btn);
+            double x = point.X - btn.Width / 2;
+            double y = point.Y - btn.Height / 2;
             return x * x + y * y;
-        } 
+        }
+
         private void floatButton_PreviewMouseUp(object sender, MouseButtonEventArgs e)
         {
             if (e.ChangedButton != MouseButton.Left)
@@ -288,7 +421,7 @@ namespace floatouch
             double x = p.X;
             double y = p.Y;
 
-            if (e.StylusDevice== null)
+            if (e.StylusDevice == null)
             {
                 if (toNormalAfterClick)
                 {
@@ -309,7 +442,7 @@ namespace floatouch
                 {
                     double minDist = 1e9;
                     int minIdx = -1;
-                    for(int i = 0; i < edgeButtonCount; i++)
+                    for (int i = 0; i < edgeButtonCount; i++)
                     {
                         var d = getDistance(edgeButtons[i], e);
                         if (d < minDist)
@@ -318,8 +451,9 @@ namespace floatouch
                             minIdx = i;
                         }
                     }
-                    if(minDist<getDistance(floatButton, e))
+                    if (minDist < getDistance(floatButton, e) && getDistance(floatButton, e) > edgeRadius / 2)
                     {
+                        edgeButtonEventHandler(minIdx);
                         SetVisualState(VisualStateType.Normal, minIdx);
                     }
                     else
@@ -333,15 +467,65 @@ namespace floatouch
 
 
         }
+        private void edgeButtonEventHandler(int idx)
+        {
+            if (idx == 0)
+            {
+                Keyboard.SimulateKeyStroke(null, win: true, tab: true);
+            }
+            if (idx == 1)
+            {
+                Keyboard.SimulateKeyStroke('C', ctrl: true);
+            }
+            if (idx == 2)
+            {
+                Keyboard.SimulateKeyStroke(Keyboard.VK_LEFT, alt: true);
+            }
+            if (idx == 3)
+            {
+                Keyboard.SimulateKeyStroke('V', ctrl: true);
+            }
+            if (idx == 4)
+            {
+                Keyboard.SimulateKeyStroke('D', win: true);
+            }
 
+
+        }
         private void Window_MouseDown(object sender, MouseButtonEventArgs e)
         {
             // this.DragMove();
             // 
+            if (e.ChangedButton == MouseButton.Right)
+            {
+                draging = true;
+            }
         }
 
+        bool draging = false;
         private void Window_PreviewMouseUp(object sender, MouseButtonEventArgs e)
         {
+            if (e.ChangedButton == MouseButton.Right)
+            {
+                draging = false;
+            }
+        }
+
+        private void Window_TouchMove(object sender, TouchEventArgs e)
+        {
+            if (!draging)
+            {
+                return;
+            }
+            var dpi = VisualTreeHelper.GetDpi(this);
+            TouchPoint pointFromWindow = e.GetTouchPoint(this); //relative to Top-Left corner of Window
+            TouchPoint pointFromButton = e.GetTouchPoint(floatButton);
+            double dx = pointFromButton.Position.X - floatButton.Width / 2 - pointFromWindow.Position.X;
+            double dy = pointFromButton.Position.Y - floatButton.Height / 2 - pointFromWindow.Position.Y;
+            Point locationFromScreen = this.PointToScreen(new Point(pointFromWindow.Position.X, pointFromWindow.Position.Y)); //translate to coordinates relative to Top-Left corner of Screen
+
+            this.Top = locationFromScreen.Y / dpi.DpiScaleY + dy;
+            this.Left = locationFromScreen.X / dpi.DpiScaleX + dx;
 
         }
     }
